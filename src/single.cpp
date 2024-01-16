@@ -1,18 +1,12 @@
 #include "common.hpp"
-#include "lock.hpp"
-#include "spin.hpp"
+#include "single.hpp"
 
 
-using InsertFunctionT = bool (*)(RingBuffer*, const BufferT, MessageSizeT);
-
-void producer(InsertFunctionT insertFunc, RingBuffer *ringBuffer, uint id) 
+void producer(RingBuffer *ringBuffer, uint id) 
 {
-    for (size_t i = 0; i < NUM_MESSAGES; i++) {
-        while(!insertFunc(ringBuffer, (BufferT)MESSAGE, sizeof(MESSAGE))) {}
-        // std::cout << id << "]: Produced size [" << i << "]: " << sizeof(MESSAGE) << std::endl;
-        // std::cout << id << "]: Produced message [" << i << "]: " << MESSAGE << std::endl;
-    }
-    // std::cout << "(Producer " << id << ") Total messages produced: " << id << std::endl;
+    size_t i = 0;
+    for (i = 0; i < NUM_MESSAGES; i++)
+        while(!InsertToMessageBuffer(ringBuffer, (BufferT)MESSAGE, sizeof(MESSAGE)));
 }
 
 void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify) 
@@ -20,12 +14,12 @@ void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify)
     char *payloadBuf = new char[RING_SIZE];
     memset(payloadBuf, 0, RING_SIZE);
     MessageSizeT fetchedBytes;
-    size_t receivedCount = 0;
-    size_t measuredCount = 0;
+    size_t receivedMsg = 0;
+    size_t countedMsg = 0;
     bool warmedUp = false;
 
-    std::chrono::_V2::system_clock::time_point startTime;
-    while (receivedCount < NUM_MESSAGES * numProducers) {
+    std::chrono::steady_clock::time_point startTime;
+    while (receivedMsg < NUM_MESSAGES * numProducers) {
         if (!FetchFromMessageBuffer(ringBuffer, (BufferT)payloadBuf, &fetchedBytes)) {
             continue;
         }
@@ -37,15 +31,11 @@ void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify)
         do {
             //* Parse the message and determine the next message start and remaining size
             ParseNextMessage(payloadBuf, fetchedBytes, &messagePtr, &messageSize, &startOfNext, &remainingSize);
-            // std::cout << "Message content [" << receivedCount << "]:\t " << std::string(messagePtr, messageSize) << std::endl;
-            // std::cout << "Message size [" << receivedCount << "]:\t " << messageSize << std::endl;
-            // std::cout << "Remaining bytes [" << receivedCount << "]:\t " << remainingSize << std::endl;
-
+            
             //* Verify the correctness of the message.
             if (verify) {
                 try {
                     if (messageSize != PAYLOAD_SIZE || memcmp(messagePtr, MESSAGE, MESSAGE_SIZE)) {
-                        std::cout << "Corrupted message!" << std::endl;
                         exit(EXIT_FAILURE);
                     }
                 } catch (const std::exception& e) {
@@ -56,14 +46,14 @@ void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify)
 
             messagePtr = startOfNext;
             fetchedBytes = remainingSize;
-            receivedCount++;
-            measuredCount++;
+            receivedMsg++;
+            countedMsg++;
         } while (remainingSize > 0);
 
         //* Start measuring throughput after warmup.
-        if (!warmedUp && receivedCount >= WARMUP_MESSAGES) {
+        if (!warmedUp && receivedMsg >= WARMUP_MESSAGES) {
             startTime = std::chrono::high_resolution_clock::now();
-            measuredCount = 0;
+            countedMsg = 0;
             warmedUp = true;
         }
     }
@@ -72,12 +62,12 @@ void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify)
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
     std::cout << "\tDuration:\t" << duration.count() << " ms" << std::endl;
-    gThroughput = (double)(measuredCount) / (duration.count() / 1000.0);
+    gThroughput = (double)(countedMsg) / (duration.count() / 1000.0);
 }
 
 int main(int argc, char *argv[]) {
     bool verify = false;
-    std::string mode = "lock";
+    std::string mode = "single";
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <check> [<mode>]" << std::endl;
         exit(1);
@@ -87,32 +77,18 @@ int main(int argc, char *argv[]) {
         mode = argv[2]? argv[2] : mode;
         std::cout << "Mode:\t" << mode << std::endl;
     }
-    std::cout << "Memory barrier:\t" << (mem_barrier == std::memory_order_relaxed? "relaxed" : "seq const") << std::endl;
-
-    InsertFunctionT insertFunc;
-    switch (mode[0]) {
-        case 'l':
-            insertFunc = &LockInsertToMessageBuffer;
-            break;
-        case 's':
-            insertFunc = &SpinInsertToMessageBuffer;
-            break;
-        default:
-            std::cerr << "Invalid mode: " << mode << std::endl;
-            exit(1);
-    }
 
     std::vector<std::vector<std::string>> data;
     std::string filename = "data/" + mode + ".csv";
     std::vector<std::string> header = {"mode", "num_producers", "throughput_mps"};
     data.push_back(header);
 
-    for (int numProducers = 1; numProducers <= TOTAL_CORES; numProducers *= 2) {
+    for (int numProducers = 1; numProducers <= 1; numProducers *= 2) {
         std::cout << "Number of producers:\t" << numProducers << std::endl;
         std::vector <std::thread> threads;
         std::vector<double> throughputs;
         //* Repeat
-        for (int i = 0; i < REPEATS; i++) {
+        for (int i = 0; i < REPEATS*2; i++) {
             std::cout << "\tRepeat:\t" << i+1 << std::endl;
             gThroughput = 0;
             threads.clear();
@@ -120,11 +96,10 @@ int main(int argc, char *argv[]) {
             //* Allocate the ring buffer.
             BufferT buffer = new char[sizeof(RingBuffer) + CACHE_LINE];
             RingBuffer* ringBuffer = AllocateMessageBuffer(buffer);
-            if (mode != "tail" && mode != "optimized") ringBuffer->Tail = -1;
-            if (mode == "optimized") gNumProducers = numProducers;
+            if (mode != "tail") ringBuffer->Tail = -1;
             
-            for (int id = 0; id < numProducers; id++) {
-                threads.push_back(std::thread(producer, insertFunc, ringBuffer, id));
+            for (int id = 0; id < numProducers; ++id) {
+                threads.push_back(std::thread(producer, ringBuffer, id));
             }
             threads.push_back(std::thread(consumer, ringBuffer, numProducers, verify));
 
@@ -138,7 +113,6 @@ int main(int argc, char *argv[]) {
 
             throughputs.push_back(gThroughput);
             data.push_back({mode, std::to_string(numProducers), std::to_string(gThroughput)});
-            //* Checkpointing to prevent server down time.
             writeCSV(filename, data);
         }
         //* Calculate average throughput.
