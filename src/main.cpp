@@ -1,6 +1,9 @@
 #include "common.hpp"
 #include "lock.hpp"
 #include "spin.hpp"
+#include "notify.hpp"
+#include "tail.hpp"
+#include "yield.hpp"
 
 
 using InsertFunctionT = bool (*)(RingBuffer*, const BufferT, MessageSizeT);
@@ -8,11 +11,9 @@ using InsertFunctionT = bool (*)(RingBuffer*, const BufferT, MessageSizeT);
 void producer(InsertFunctionT insertFunc, RingBuffer *ringBuffer, uint id) 
 {
     for (size_t i = 0; i < NUM_MESSAGES; i++) {
-        while(!insertFunc(ringBuffer, (BufferT)MESSAGE, sizeof(MESSAGE))) {}
-        // std::cout << id << "]: Produced size [" << i << "]: " << sizeof(MESSAGE) << std::endl;
-        // std::cout << id << "]: Produced message [" << i << "]: " << MESSAGE << std::endl;
+        while(!insertFunc(ringBuffer, (BufferT)MESSAGE, sizeof(MESSAGE)))
+        ;
     }
-    // std::cout << "(Producer " << id << ") Total messages produced: " << id << std::endl;
 }
 
 void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify) 
@@ -24,7 +25,7 @@ void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify)
     size_t measuredCount = 0;
     bool warmedUp = false;
 
-    std::chrono::_V2::system_clock::time_point startTime;
+    std::chrono::high_resolution_clock::time_point startTime;
     while (receivedCount < NUM_MESSAGES * numProducers) {
         if (!FetchFromMessageBuffer(ringBuffer, (BufferT)payloadBuf, &fetchedBytes)) {
             continue;
@@ -37,9 +38,6 @@ void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify)
         do {
             //* Parse the message and determine the next message start and remaining size
             ParseNextMessage(payloadBuf, fetchedBytes, &messagePtr, &messageSize, &startOfNext, &remainingSize);
-            // std::cout << "Message content [" << receivedCount << "]:\t " << std::string(messagePtr, messageSize) << std::endl;
-            // std::cout << "Message size [" << receivedCount << "]:\t " << messageSize << std::endl;
-            // std::cout << "Remaining bytes [" << receivedCount << "]:\t " << remainingSize << std::endl;
 
             //* Verify the correctness of the message.
             if (verify) {
@@ -97,6 +95,15 @@ int main(int argc, char *argv[]) {
         case 's':
             insertFunc = &SpinInsertToMessageBuffer;
             break;
+        case 'n':
+            insertFunc = &NotifyInsertToMessageBuffer;
+            break;
+        case 't':
+            insertFunc = &TailInsertToMessageBuffer;
+            break;
+        case 'y':
+            insertFunc = &YieldInsertToMessageBuffer;
+            break;
         default:
             std::cerr << "Invalid mode: " << mode << std::endl;
             exit(1);
@@ -120,8 +127,7 @@ int main(int argc, char *argv[]) {
             //* Allocate the ring buffer.
             BufferT buffer = new char[sizeof(RingBuffer) + CACHE_LINE];
             RingBuffer* ringBuffer = AllocateMessageBuffer(buffer);
-            if (mode != "tail" && mode != "optimized") ringBuffer->Tail = -1;
-            if (mode == "optimized") gNumProducers = numProducers;
+            if (mode != "tail") ringBuffer->Tail = -1;
             
             for (int id = 0; id < numProducers; id++) {
                 threads.push_back(std::thread(producer, insertFunc, ringBuffer, id));
