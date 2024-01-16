@@ -1,4 +1,4 @@
-.phony: compile lock spin notify tail yield check single all clean
+.phony: compile lock spin notify optimized tail yield check local single all clean
 
 compile: src/main.cpp include/*.hpp
 	g++ src/main.cpp -Iinclude -std=c++11 -lpthread -o rb
@@ -28,11 +28,15 @@ check:
 	g++ -DMEM_RELAXED src/main.cpp -Iinclude -std=c++11 -lpthread -o rb
 	strace -c -f ./rb 1 optimized
 
+local:
+	g++ -DARM src/main.cpp -Iinclude -std=c++11 -lpthread -o rb
+	./rb 0 optimized
+
 single:
 	g++ src/single.cpp -Iinclude -std=c++11 -lpthread -o rb
 	./rb 0 single
 
-all: yield spin tail single lock
+all: single lock spin notify tail yield optimized
 
 clean:
 	rm rb

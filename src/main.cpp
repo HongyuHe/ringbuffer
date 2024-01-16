@@ -2,6 +2,7 @@
 #include "lock.hpp"
 #include "spin.hpp"
 #include "notify.hpp"
+#include "optimized.hpp"
 #include "tail.hpp"
 #include "yield.hpp"
 
@@ -98,6 +99,9 @@ int main(int argc, char *argv[]) {
         case 'n':
             insertFunc = &NotifyInsertToMessageBuffer;
             break;
+        case 'o':
+            insertFunc = &OptimizedInsertToMessageBuffer;
+            break;
         case 't':
             insertFunc = &TailInsertToMessageBuffer;
             break;
@@ -127,7 +131,8 @@ int main(int argc, char *argv[]) {
             //* Allocate the ring buffer.
             BufferT buffer = new char[sizeof(RingBuffer) + CACHE_LINE];
             RingBuffer* ringBuffer = AllocateMessageBuffer(buffer);
-            if (mode != "tail") ringBuffer->Tail = -1;
+            if (mode != "tail" && mode != "optimized") ringBuffer->Tail = -1;
+            if (mode == "optimized") gNumProducers = numProducers;
             
             for (int id = 0; id < numProducers; id++) {
                 threads.push_back(std::thread(producer, insertFunc, ringBuffer, id));
