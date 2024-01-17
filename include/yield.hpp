@@ -38,11 +38,6 @@ YieldInsertToMessageBuffer(
               }
        } while (Ring->ForwardTail[0].compare_exchange_weak(
               forwardTail, (forwardTail + messageBytes) % RING_SIZE, mem_barrier, mem_barrier) == false);
-
-       // while (Ring->Tail != forwardTail) {}
-       while (Ring->SafeTail[0] != forwardTail) {
-              std::this_thread::yield();
-       }
        
        if (forwardTail + messageBytes <= RING_SIZE) {
               char* messageAddress = &Ring->Buffer[forwardTail];
@@ -67,8 +62,10 @@ YieldInsertToMessageBuffer(
               }
        }
 
-       // std::atomic_thread_fence(std::memory_order_acquire);
-       // Ring->Tail = (forwardTail + messageBytes) & SIZE_MASK;
+       while (Ring->SafeTail[0] != forwardTail) {
+              std::this_thread::yield();
+       }
+
        Ring->SafeTail[0] = (forwardTail + messageBytes) & SIZE_MASK;
 
        return true;

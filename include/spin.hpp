@@ -37,9 +37,6 @@ SpinInsertToMessageBuffer(
        } while (Ring->ForwardTail[0].compare_exchange_weak(
               forwardTail, (forwardTail + messageBytes) % RING_SIZE, mem_barrier, mem_barrier) == false);
 
-       //* Spin lock waiting for the earlier threads commiting their inserts.
-       while (Ring->SafeTail[0].load(mem_barrier) != forwardTail) {}
-       
        if (forwardTail + messageBytes <= RING_SIZE) {
               char* messageAddress = &Ring->Buffer[forwardTail];
  
@@ -62,6 +59,9 @@ SpinInsertToMessageBuffer(
                      memcpy(messageAddress2, (const char*)CopyFrom + remainingBytes, MessageSize - remainingBytes);
               }
        }
+
+       //* Spin lock waiting for the earlier threads commiting their inserts.
+       while (Ring->SafeTail[0].load(mem_barrier) != forwardTail) {}
 
        int safeTail = Ring->SafeTail[0];
        while (Ring->SafeTail[0].compare_exchange_weak(

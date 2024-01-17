@@ -40,8 +40,6 @@ TailInsertToMessageBuffer(
               }
        } while (Ring->ForwardTail[0].compare_exchange_weak(
               forwardTail, (forwardTail + messageBytes) % RING_SIZE, mem_barrier, mem_barrier) == false);
-
-       while (Ring->Tail != forwardTail) {}
        
        if (forwardTail + messageBytes <= RING_SIZE) {
               char* messageAddress = &Ring->Buffer[forwardTail];
@@ -65,6 +63,8 @@ TailInsertToMessageBuffer(
                      memcpy(messageAddress2, (const char*)CopyFrom + remainingBytes, MessageSize - remainingBytes);
               }
        }
+
+       while (Ring->Tail != forwardTail) {}
 
 #ifdef ARM
        std::atomic_thread_fence(std::memory_order_release);

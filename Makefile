@@ -29,7 +29,7 @@ check:
 	strace -c -f ./rb 1 optimized
 
 local:
-	g++ -DARM src/main.cpp -Iinclude -std=c++11 -lpthread -o rb
+	g++ -DARM -DMEM_RELAXED src/main.cpp -Iinclude -std=c++11 -lpthread -o rb
 	./rb 0 optimized
 
 single:
