@@ -32,7 +32,7 @@ local:
 	g++ -DARM -DMEM_RELAXED src/main.cpp -Iinclude -std=c++11 -lpthread -o rb
 	./rb 0 optimized
 
-single:
+single: compile
 	g++ src/single.cpp -Iinclude -std=c++11 -lpthread -o rb
 	./rb 0 single
 

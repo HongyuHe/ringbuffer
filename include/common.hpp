@@ -117,8 +117,8 @@ FetchFromMessageBuffer(
        BufferT CopyTo,
        MessageSizeT* MessageSize
 ) {
-       int forwardTail = Ring->ForwardTail[0].load(mem_barrier);
        int safeTail = (Ring->Tail < 0)? Ring->SafeTail[0].load(mem_barrier) : Ring->Tail;
+       int forwardTail = Ring->ForwardTail[0].load(mem_barrier);
        int head = Ring->Head[0];
  
        if (forwardTail == head) {

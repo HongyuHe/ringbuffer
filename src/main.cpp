@@ -5,16 +5,16 @@
 #include "optimized.hpp"
 #include "tail.hpp"
 #include "yield.hpp"
+#include "free.hpp"
 
 
 using InsertFunctionT = bool (*)(RingBuffer*, const BufferT, MessageSizeT);
 
 void producer(InsertFunctionT insertFunc, RingBuffer *ringBuffer, uint id) 
 {
-    for (size_t i = 0; i < NUM_MESSAGES; i++) {
+    for (size_t i = 0; i < NUM_MESSAGES; i++)
         while(!insertFunc(ringBuffer, (BufferT)MESSAGE, sizeof(MESSAGE)))
-        ;
-    }
+            ;
 }
 
 void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify) 
@@ -47,7 +47,7 @@ void consumer(RingBuffer *ringBuffer, uint numProducers, bool verify)
                         std::cout << "Corrupted message!" << std::endl;
                         exit(EXIT_FAILURE);
                     }
-                } catch (const std::exception& e) {
+                } catch (const std::exception &e) {
                     std::cout << "Exception: " << e.what() << std::endl;
                     exit(EXIT_FAILURE);
                 }
@@ -107,6 +107,9 @@ int main(int argc, char *argv[]) {
             break;
         case 'y':
             insertFunc = &YieldInsertToMessageBuffer;
+            break;
+        case 'f':
+            insertFunc = &FreeInsertToMessageBuffer;
             break;
         default:
             std::cerr << "Invalid mode: " << mode << std::endl;

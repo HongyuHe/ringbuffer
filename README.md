@@ -15,7 +15,8 @@ Modified from [this implementation](https://fardatalab.org/files/RingBuffer.h) o
 │   ├── single.hpp      # Single producer (original)
 │   ├── spin.hpp        # Busy waiting for prior commits
 │   ├── tail.hpp        # Change tail pointer to non-atomic
-│   └── yield.hpp       # Yielding in spin lock
+│   ├── yield.hpp       # Yielding in spin lock
+│   └── free.hpp        # Lock-free producer (same as `single` but with `&` wrapping)
 └── src
     ├── main.cpp        # Driver application
     └── single.cpp      # Driver for single producer
